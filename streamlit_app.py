@@ -2,39 +2,83 @@ import altair as alt
 import numpy as np
 import pandas as pd
 import streamlit as st
+import datetime as dt
 
 """
-# Welcome to Streamlit!
+# Impact of high fees on pension pot
 
-Edit `/streamlit_app.py` to customize this app to your heart's desire :heart:.
-If you have any questions, checkout our [documentation](https://docs.streamlit.io) and [community
-forums](https://discuss.streamlit.io).
-
-In the meantime, below is an example of what you can do with just a few lines of code:
 """
 
-num_points = st.slider("Number of points in spiral", 1, 10000, 1100)
-num_turns = st.slider("Number of turns in spiral", 1, 300, 31)
+current_year = dt.datetime.now().year
 
-indices = np.linspace(0, 1, num_points)
-theta = 2 * np.pi * num_turns * indices
-radius = indices
+starting_amount=st.number_input("Starting amount",1,1000000,100000)
+interest_rate=st.number_input("Stock market growth %",0,100,10)
+vanguard_fees=st.number_input("Vanguard fees %age",0.0,100.0,0.14)
+active_fees=st.number_input("Active management fees %age",0.0,100.0,1.0)
+number_of_years=st.number_input("Number of years",0,100,40)
 
-x = radius * np.cos(theta)
-y = radius * np.sin(theta)
+delta_rate1=1+((interest_rate-vanguard_fees)/100)
+delta_rate2=1+((interest_rate-active_fees)/100)
 
-df = pd.DataFrame({
-    "x": x,
-    "y": y,
-    "idx": indices,
-    "rand": np.random.randn(num_points),
-})
+year_series=\
+    (
+        pd
+        .date_range
+        (
+            start=str(current_year),
+            periods=number_of_years,
+            freq="1YS"
+        )
+    )
 
-st.altair_chart(alt.Chart(df, height=700, width=700)
-    .mark_point(filled=True)
-    .encode(
-        x=alt.X("x", axis=None),
-        y=alt.Y("y", axis=None),
-        color=alt.Color("idx", legend=None, scale=alt.Scale()),
-        size=alt.Size("rand", legend=None, scale=alt.Scale(range=[1, 150])),
-    ))
+df=\
+    (
+        pd
+        .DataFrame
+        (
+            {
+                "year":year_series
+            }
+        )   
+    )
+
+df["Year"]=df["year"].dt.strftime("%Y").astype("int64")
+df["year"]=df["Year"]-current_year
+df["Vanguard"]=round((starting_amount*(delta_rate1**df["year"])),2)
+df["Active Management"]=round((starting_amount*(delta_rate2**df["year"])),2)
+df["diff"]=df["Vanguard"]-df["Active Management"]
+df["diff_percent"]=(df["diff"]/df["Active Management"])*100
+
+max=df["year"].max()
+year=int(df.query('year==@max')["Year"].to_string(index=False))
+v_amount=float(df.query('year==@max')["Vanguard"].to_string(index=False))
+a_amount=float(df.query('year==@max')["Active Management"].to_string(index=False))
+diff=float(df.query('year==@max')["diff"].to_string(index=False))
+diff_percent=float(df.query('year==@max')["diff_percent"].to_string(index=False))
+
+comment="After {} years, using an active fund lost you £{:,}, returning only £{:,}, rather than Vanguard's £{:,}, a difference of {:.2f}%".format(max+1,diff,a_amount,v_amount,diff_percent)
+
+st.write(comment)
+
+st.line_chart\
+    (
+        data=df,
+        x="year",
+        y=["Vanguard","Active Management"]
+    )
+
+st.dataframe\
+    (
+        data=df,
+        hide_index=True,
+        column_order=["Year","year","Vanguard","Active Management","diff","diff_percent"],
+        column_config=\
+            {
+                "Year":st.column_config.NumberColumn(label="Year",format="%d"),
+                "year":st.column_config.NumberColumn(label="Delta Year",format="%d"),
+                "Vanguard":st.column_config.NumberColumn(label="Vanguard",format="£%.2f"),
+                "Active Management":st.column_config.NumberColumn(label="Active Management",format="£%.2f"),
+                "diff":st.column_config.NumberColumn(label="Diff",format="£%.2f"),
+                "diff_percent":st.column_config.NumberColumn(label="Diff %age",format="%.2f%%"),
+            }
+    )
